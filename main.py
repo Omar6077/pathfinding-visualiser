@@ -101,8 +101,6 @@ def addwall(event):
 
         canvas.itemconfig(rectangleid, fill = "black")
         walls.add((row, column))
-    #    print("Row:", row, "Column", column)
-    #    print(rectangleid)
 
 def resizegrid(event = None):
     global cellsize, offsetx, offsety
@@ -303,15 +301,16 @@ def bfs():
     else:
         multiplier = 5000
     aniduration = exetime * multiplier
-    anidurationprint = round(aniduration, 2)
-    delay = (aniduration * 1000) / len(visitorder)
+    delay = max(round((aniduration * 1000) / len(visitorder)), 15)
+    anidurationprint = round((delay * len(visitorder)) / 1000, 2)
+    estslowdown = int(round(anidurationprint / exetime, -1))
     bfsvisit.configure(text = nodesexp)
     bfspath.configure(text = len(path) - 1)
     bfstime.configure(text = f"{exetime * 1000:.3f} ms")
     bfscost.configure(text = pathcost)
-    print(path)
     if animate is True:
-        feedback.configure(text = f"Path found! Animation duration: {anidurationprint}s ({multiplier}x slower)")
+        feedback.configure(text = f"Path found!")
+        tfeedback.configure(text = f"Est. Animation duration: {anidurationprint}s ({estslowdown}x slower)")
         animatevisited(visitorder, path, delay)
     else:
         feedback.configure(text = "Path found!")
@@ -345,11 +344,11 @@ def dijkstra():
             if 0 <= nrow < rows and 0 <= ncolumn < columns:
                 if neighbour not in walls:
                     stepcost = weights.get(neighbour, 1)
-                    newdistance = currentdist + stepcost
-                    if distances[neighbour] > newdistance:
-                        distances[neighbour] = newdistance
+                    newdist = currentdist + stepcost
+                    if distances[neighbour] > newdist:
+                        distances[neighbour] = newdist
                         camefrom[neighbour] = current
-                        heapq.heappush(priorityqueue,(newdistance, neighbour))
+                        heapq.heappush(priorityqueue,(newdist, neighbour))
     path = []
     current = end
     if end not in camefrom:
@@ -377,15 +376,16 @@ def dijkstra():
     else:
         multiplier = 5000
     aniduration = exetime * multiplier
-    anidurationprint = round(aniduration, 2)
-    delay = (aniduration * 1000) / len(visitorder)
+    delay = max(round((aniduration * 1000) / len(visitorder)), 15)
+    anidurationprint = round((delay * len(visitorder)) / 1000, 2)
+    estslowdown = int(round(anidurationprint / exetime, -1))
     dijkvisit.configure(text = nodesexp)
     dijkpath.configure(text = len(path) - 1)
     dijktime.configure(text = f"{exetime * 1000:.3f} ms")
     dijkcost.configure(text = distances[end])
-    print(path)
     if animate is True:
-        feedback.configure(text = f"Path found! Animation duration: {anidurationprint}s ({multiplier}x slower)")
+        feedback.configure(text = f"Path found!")
+        tfeedback.configure(text = f"Est. Animation duration: {anidurationprint}s ({estslowdown}x slower)")
         animatevisited(visitorder, path, delay)
     else:
         feedback.configure(text = "Path found!")
@@ -407,7 +407,67 @@ def a():
     priorityqueue = [(heuristic(start), 0, start)]
     while priorityqueue:
         currentf, currentdist, current = heapq.heappop(priorityqueue)
-        if currentdist
+        if currentdist > distances[current]:
+            continue
+        visitorder.append(current)
+        nodesexp += 1
+        if current == end:
+            break
+        row, column = current
+        neighbours = [(row - 1, column), (row + 1, column), (row, column - 1), (row, column + 1)]
+        for neighbour in neighbours:
+            nrow, ncolumn = neighbour
+            if 0 <= nrow < rows and 0 <= ncolumn < columns:
+                if neighbour not in walls:
+                    stepcost = weights.get(neighbour, 1)
+                    newdist = currentdist + stepcost
+                    if distances[neighbour] > newdist:
+                        distances[neighbour] = newdist
+                        camefrom[neighbour] = current
+                        newf = newdist + heuristic(neighbour)
+                        heapq.heappush(priorityqueue,(newf, newdist, neighbour))
+    path = []
+    current = end
+    if end not in camefrom:
+        feedback.configure(text = "No path found!")
+        return False
+    while current != start:
+        path.append(current)
+        current = camefrom[current]
+    path.append(current)
+    path.reverse()
+    endtime = time.perf_counter()
+    exetime = endtime - starttime
+    if exetime > 0.1:
+        multiplier = 100
+    elif exetime > 0.05:
+        multiplier = 500
+    elif exetime > 0.01:
+        multiplier = 750
+    elif exetime > 0.005:
+        multiplier = 1250
+    elif exetime > 0.0025:
+        multiplier = 1500
+    elif exetime > 0.001:
+        multiplier = 2500
+    else:
+        multiplier = 5000
+    aniduration = exetime * multiplier
+    delay = max(round((aniduration * 1000) / len(visitorder)), 15)
+    anidurationprint = round((delay * len(visitorder)) / 1000, 2)
+    estslowdown = int(round(anidurationprint / exetime, -1))
+    avisit.configure(text = nodesexp)
+    apath.configure(text = len(path) - 1)
+    atime.configure(text = f"{exetime * 1000:.3f} ms")
+    acost.configure(text = distances[end])
+    if animate is True:
+        feedback.configure(text = f"Path found!")
+        tfeedback.configure(text = f"Est. Animation duration: {anidurationprint}s ({estslowdown}x slower)")
+        animatevisited(visitorder, path, delay)
+    else:
+        feedback.configure(text = "Path found!")
+        showpath(path)
+    return True
 
 def heuristic(cell):
     row, column = cell
@@ -419,8 +479,12 @@ def setanimation():
     global animate
     animate = bool(anicheckbox.get())
 
-def animatevisited(visitorder, path, delay, index = 0):
+def animatevisited(visitorder, path, delay, index = 0, anistart = None):
+    if anistart is None:
+        anistart = time.perf_counter()
     if index >= len(visitorder):
+        actualdur = time.perf_counter() - anistart
+        tfeedback.configure(text = f"Actual animation duration: {actualdur:.2f}s")
         showpath(path)
         return
     cell = visitorder[index]
@@ -433,7 +497,7 @@ def animatevisited(visitorder, path, delay, index = 0):
         else:
             canvas.itemconfig(rectangleid, fill = "#00c3ff")
 
-    window.after(int(delay), lambda: animatevisited(visitorder, path, delay, index + 1))
+    window.after(int(delay), lambda: animatevisited(visitorder, path, delay, index + 1, anistart))
 
 def showpath(path):
     for cell in path:
@@ -507,14 +571,14 @@ anicheckbox.pack(padx = 20, pady = 10)
 runbutton = CTkButton(controlpanel, text = "Run", command = runalgo, fg_color="yellow", text_color="black")
 runbutton.pack(padx = 20, pady = 10)
 
-clearbutton = CTkButton(controlpanel, text = "clear", command = clearall, fg_color="red")
+clearbutton = CTkButton(controlpanel, text = "Clear", command = clearall, fg_color="red")
 clearbutton.pack(padx = 20, pady = 10)
 
 resultsframe = CTkFrame(controlpanel)
 resultsframe.pack(padx = 10, pady = (15, 10), fill = "x")
 
 resultstitle = CTkLabel(resultsframe, text = "Results", font = ("Arial", 14), fg_color = "transparent")
-resultstitle.grid(row = 0, column = 0, columnspan = 4, pady = (8, 6))
+resultstitle.grid(row = 0, column = 0, columnspan = 5, pady = (8, 6))
 
 CTkLabel(resultsframe, text = "Algorithm").grid(row = 1, column = 0, padx = 4)
 CTkLabel(resultsframe, text = "Nodes visited").grid(row = 1, column = 1, padx = 4)
@@ -554,7 +618,10 @@ acost = CTkLabel(resultsframe, text = "-")
 acost.grid(row = 4, column = 4)
 
 feedback = CTkLabel(controlpanel, text = "", font = ("Arial", 12), fg_color = "transparent")
-feedback.pack(pady = (20,10))
+feedback.pack(pady = (0,1))
+
+tfeedback = CTkLabel(controlpanel, text = "", font = ("Arial", 12), fg_color = "transparent")
+tfeedback.pack(pady = (0,1))
 
 canvas.bind("<B1-Motion>", placecell)
 canvas.bind("<Button-1>", placecell)
